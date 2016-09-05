@@ -1,0 +1,19 @@
+{
+  "name": "hotcake",
+  "version": "0.1.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "ned rihine",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "gulp": "^3.9.1",
+    "gulp-lint-ls": "^0.1.0",
+    "gulp-ls": "^3.0.0",
+    "lint-ls": "^0.5.1"
+  },
+  "keywords": [],
+  "description": ""
+}

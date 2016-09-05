@@ -1,0 +1,17 @@
+# -*- coding: utf-8; mode: gitignore; -*-
+
+# Emacs temporary files
+*~
+\#*#
+
+#
+node_modules/
+
+#
+bower_components/
+
+# LiveScript
+*.js
+
+# 
+core/
