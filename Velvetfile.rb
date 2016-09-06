@@ -11,8 +11,8 @@ def echo_and_system(command)
   system command
 end
 
-watch 'core/scripts/*.ls' do |matching|
+watch 'src/scripts/*.ls' do |matching|
   matching.each do |filename|
-    echo_and_system "lsc --no-header --bare -c #{filename}"
+    echo_and_system "lsc --no-header --bare  --output core/scripts -c #{filename}"
   end
 end
