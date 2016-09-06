@@ -62,6 +62,15 @@ this.app.controller( 'ComposeCtrl', [ '$scope', ($scope) !->
     * name: 'purpleStyle'
       icon-name: \purple
       display-name: 'Purple'
+    * name: 'soften'
+      icon-name: \soften
+      display-name: 'Soften'
+    * name: 'gray'
+      icon-name: \bw
+      display-name: 'B&W'
+    * name: 'strongEnhancement'
+      icon-name: \lighten
+      display-name: 'Lighten'
 ] )
 
 bind-ditective app, <[ KEY MISC DND ]>
