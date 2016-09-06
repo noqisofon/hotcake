@@ -19,19 +19,20 @@ root.app.factory( 'HotcakeBus', [ '$rootScope', 'AppService', 'NotifyService', '
 
     init: !->
       Logger.info 'init message bus'
-      notify = (win, cmd, content, respond) ->
+
+      notify = (a-window, command, content, respond) ->
         if HotcakeBus.message-map.has-own-property( command )
           for callback in HotcakeBus.message-map[ command ]
-            callback( win, cmd, content, respond )
+            callback( a-window, command, content, respond )
 
-      Hotcake.bus.on-message.add-listener! (message, sender, respond) ->
+      hotcake.bus.on-message.add-listener! (message, sender, respond) ->
         # console.log \control, ev
         win = message.win
-        cmd = message.cmd
+        command = message.command
         content = message.content
-        # console.log 'Messagebus receives a mennsage: ', win, cmd, content
-        HotcakeBus.crack win, cmd, content, respond
-        notify win, cmd, content, respond
+        # console.log 'Messagebus receives a mennsage: ', win, command, content
+        HotcakeBus.crack a-window, command, content, respond
+        notify a-window, command, content, respond
         true
 
     register: (command, callback) !->
@@ -40,14 +41,14 @@ root.app.factory( 'HotcakeBus', [ '$rootScope', 'AppService', 'NotifyService', '
       else
         HotcakeBus.message-map[command] = [ callback ]
 
-    crack: (win, cmd, content, respond) !->
-      switch cmd
+    crack: (win, command, content, respond) !->
+      switch command
         when \auth
           HotcakeBus.authorize content.serv, content.username, content.password, respond
         when \oauth_get_authorize_url
           HotcakeBus.get-OAuth-authorize-URL content.serv, content.username, respond
         when \oauth_with_pin
-          HotcakeBus.authorizeWithPin content.serv, content.username, content.password, content.pin, respond
+          HotcakeBus.authorize-with-pin content.serv, content.username, content.password, content.pin, respond
         when \cancel_auth
           HotcakeBus.stop-auth = true
         when \auto_complete
@@ -205,7 +206,7 @@ root.app.factory( 'HotcakeBus', [ '$rootScope', 'AppService', 'NotifyService', '
       SliderService.remove-slot serv, slot-name, (ok) !->
         if ok
           HotcakeSlot.all (accounts) !->
-            Hotcake.bus.send-message(
+            hotcake.bus.send-message(
               win: \main
               command: \reset_settings
               content:
@@ -244,7 +245,432 @@ root.app.factory( 'HotcakeBus', [ '$rootScope', 'AppService', 'NotifyService', '
           Logger.info 'connection is not available'
 
     whisper: (key, value, respond) ->
+      SettingsService.set-forbiddens key, value
+      NotifyService.notify "Whisper: #{key}=#{value}", 'You may need to restart to take effects'
+
+    follow-people: (serv, slot-name, screen-name, respond) !->
+      connection = ConnectionManager.get-connection serv, slot-name
+      connection.handle-follow screen-name, (user) !->
+        user = RelationService.get-by-name serv, slot-name, screen-name
+
+        if user isnt null
+          switch user.relationship
+            when Hotcake.Relationship.FOLLOWED
+              user.relationship = RelationService.set-relationship serv, slot-name, user.name, Hotcake.Relationship.FRIENDS
+              # user.relationship = Hotcake.Relationship.FRIENDS
+            when Hotcake.Relationship.STRANGER
+              user.relationship = RelationService.set-relationship serv, slot-name, user.name, Hotcake.Relationship.FOLLOWING
+              # user.relationship = Hotcake.Relationship.FOLLOWING
+
+        respond { result: \ok, content: { user: user } }
+
+    unfollow-people: (serv, slot-name, screen-name, respond) !->
+      connection = ConnectionManager.get-connection serv, slot-name
+      connection.handle-unfollow screen-name, (user) !->
+        user = RelationService.get-by-name serv, slot-name, screen-name
+
+        if user isnt null
+          switch user.relationship
+            when Hotcake.Relationship.FRIENDS
+              user.relationship = RelationService.set-relationship serv, slot-name, user.name, Hotcake.Relationship.FOLLOWED
+              # user.relationship = Hotcake.Relationship.FOLLOWED
+            when Hotcake.Relationship.FOLLOWING
+              user.relationship = RelationService.set-relationship serv, slot-name, user.name, Hotcake.Relationship.STRANGER
+              # user.relationship = Hotcake.Relationship.STRANGER
+
+        respond { result: \ok, content: { user: user } }
+
+    block-people: (serv, slot-name, screen-name, respond) !->
+      connection = ConnectionManager.get-connection serv, slot-name
+
+      connection.handle-block screen-name, (user) ->
+        user = RelationService.get-by-name serv, slot-name, screen-name
+
+        if user isnt null
+          user.relationship = RelationService.set-relationship serv, slot-name, user.name, Hotcake.Relationship.BLOCKED
+          # user.relationship = Hotcake.Relationship.BLOCKED
+        
+        respond { result: \ok, content: { user: user } }
+
+    unblock-people: (serv, slot-name, screen-name, respond) !->
+      connection = ConnectionManager.get-connection serv, slot-name
+
+      connection.handle-unblock screen-name, (user) ->
+        user = RelationService.get-by-name serv, slot-name, screen-name
+
+        if user isnt null
+          user.relationship = RelationService.set-relationship serv, slot-name, user.name, Hotcake.Relationship.STRANGER
+          # user.relationship = Hotcake.Relationship.STRANGER
+        
+        respond { result: \ok, content: { user: user } }
+
+    mark-spam-people: (serv, slot-name, screen-name, respond) !->
+      connection = ConnectionManager.get-connection serv, slot-name
+
+      connection.handle-mark-spam-people screen-name, (user) ->
+        user = RelationService.get-by-name serv, slot-name, screen-name
+
+        if user isnt null
+          user.relationship = RelationService.set-relationship serv, slot-name, user.name, Hotcake.Relationship.BLOCKED
+          # user.relationship = Hotcake.Relationship.BLOCKED
+        
+        respond { result: \ok, content: { user: user } }
+
+    mention-people: (serv, slot-name, name, respond) !->
+      DialogService.open-compose-dialog SliderService.current-slot, { response: "@#{name}" }
+
+    message-people: (serv, slot-name, name, respond) !->
+      DialogService.open-message-dialog SliderService.current-slot, { name: name }
+
+    preview-media: (a-media, respond) !->
+      opts = {}
+      DialogService.open-preview-dialog opts, a-media
+
+    view-people: (serv, slot-name, user-name, respond) !->
+      relationship = Hotcake.Relationship.UNKNOWN
+      user         = RelationService.get-by-name serv, slot-name, user-name
+      slot         = SliderService.get-slot serv, slot-name
+
+      if slot is null then
+        return
+
+      client  = ConnectionManager.get-connection serv, slot-name
+      timeout = (time) -> Date.now() - time > 3600000     # 1 hour
+
+      if user isnt null
+        # @TODO: should compare user.name with myself.name, not slot.name
+        if Hotcake.same-name user.name, slot.name
+          user.relationship = Hotcake.Relationship.SELF
+          relationship      = user.relationship
+
+      DialogService.open-people-dialog slot, user, (a-window) !->
+        if user is null or timeout( user.create-time )
+          client.get-user user-name, (user) !->
+            RelationService.add serv, slot-name, [ user ]
+            if RelationService.is-following serv, slot-name, user
+              user.is-following = true
+
+            hotcake.bus.send-message { recipient: a-window.id, role: \column, command: \set_people_user, content: { user: user } }
+
+        if relationship is Hotcake.Relationship.UNKNOWN
+          client.get-relationship slot.name, user-name, (relationship) !->
+            RelationService.set-relationship serv, slot-name, user-name, relationship
+            hotcake.bus.send-message { recipient: a-window.id, role: \column, command: \set_people_relationship, content: { relationship: relationship } }
+
+        client.handle-column-load {
+          type: \people
+          params: [ user-name, '' ]
+          position-arg1: ''
+          position-arg2: ''
+        }, (items) !->
+          hotcake.bus.send-message { recipient: a-window.id, role: \column, command: \set_people_timeline, content: { items: items, settings: SettingsService.settings }  }
+        , (data) !->
+          details = if data.constructor is String then
+            data
+          else
+            JSON.stringify data
+          hotcake.bus.send-message { recipient: a-window.id, role: \column, command: \set_people_timeline, result: \error, reason: details }
+
+    load-people-timeline: (serv, slot-name, user-name, window-id, respond) !->
+      client = ConnectionManager.get-connection serv, slot-name
+
+      client.handle-column-load {
+        type: \people
+        params: [ user-name, '' ]
+        position-arg1: ''
+        position-arg2: ''
+      }, (items) !->
+        hotcake.bus.send-message { recipient: window-id, role: \column, command: \set_people_timeline, content: { items: items, settings: SettingsService.settings }  }
+      , (data) !->
+        details = if data.constructor is String then
+          data
+        else
+          JSON.stringify data
+        hotcake.bus.send-message { recipient: window-id, role: \column, command: \set_people_timeline, result: \error, reason: details }
+
+    load-people-follower: (serv, slot-name, user-name, window-id, respond) !->
+      client = ConnectionManager.get-connection serv, slot-name
+
+      client.handle-column-load {
+        type: \follower
+        params: [ user-name, '' ]
+        position-arg1: '-1'
+        position-arg2: ''
+      }, (items) !->
+        hotcake.bus.send-message { recipient: window-id, role: \column, command: \set_people_timeline, content: { items: items, settings: SettingsService.settings }  }
+      , (data) !->
+        details = if data.constructor is String then
+          data
+        else
+          JSON.stringify data
+        hotcake.bus.send-message { recipient: window-id, role: \column, command: \set_people_timeline, result: \error, reason: details }
+
+    load-people-following: (serv, slot-name, user-name, window-id, respond) !->
+      client = ConnectionManager.get-connection serv, slot-name
+
+      client.handle-column-load {
+        type: \following
+        params: [ user-name, '' ]
+        position-arg1: '-1'
+        position-arg2: ''
+      }, (items) !->
+        hotcake.bus.send-message { recipient: window-id, role: \column, command: \set_people_timeline, content: { items: items, settings: SettingsService.settings }  }
+      , (data) !->
+        details = if data.constructor is String then
+          data
+        else
+          JSON.stringify data
+        hotcake.bus.send-message { recipient: window-id, role: \column, command: \set_people_timeline, result: \error, reason: details }
+
+    load-people-favorite: (serv, slot-name, user-name, window-id, respond) !->
+      client = ConnectionManager.get-connection serv, slot-name
+
+      client.handle-column-load {
+        type: \favorite
+        params: [ user-name, '' ]
+        position-arg1: ''
+        position-arg2: ''
+      }, (items) !->
+        hotcake.bus.send-message { recipient: window-id, role: \column, command: \set_people_timeline, content: { items: items, settings: SettingsService.settings }  }
+      , (data) !->
+        details = if data.constructor is String then
+          data
+        else
+          JSON.stringify data
+        hotcake.bus.send-message { recipient: window-id, role: \column, command: \set_people_timeline, result: \error, reason: details }
+
+    reply-item: (serv, slot-name, item, respond) !->
+      slot = SliderService.get-slot serv, slot-name
+
+      if slot is null then
+        return
+
+      DialogService.open-compose-dialog slot,
+        id: item.id
+        type: \reply
+        text: item.raw-text
+        author-id: item.author-id
+        author-name: item.author-name
+        author-avatar-data: item.feature-pic-data
+        mentions: item.mentions
+
+    quote-item: (serv, slot-name, item, respond) !->
+      slot = SliderService.get-slot serv, slot-name
+
+      if slot is null then
+        return
+
+      DialogService.open-compose-dialog slot,
+        id: item.id
+        type: \quote
+        text: item.raw-text
+        author-id: item.author-id
+        author-name: item.author-name
+        mentions: []
+
+    favorite-item: (serv, slot-name, item ,respond) !->
+      after-favorite = !->
+        respond { result: \ok, favorited: true }
+
+      after-undo-favorite = !->
+        respond { result: \ok, favorited: false }
+
+      err = !->
+        respond { result: \error, reason: 'Failed to favorite item.' }
       
+      client = ConnectionManager.get-connection serv, slot-name
+
+      if item.favorited
+        client.handle-undo-favorite item.id, after-undo-favorite, err
+      else
+        client.handle-favorite item.id, after-favorite, err
+
+    repost-item: (serv, slot-name, item ,respond) !->
+      after-repost = !->
+        respond { result: \ok, resposted: true, item: item }
+
+      after-undo-repost = !->
+        respond { result: \ok, resposted: false, item: item }
+
+      err = !->
+        respond { result: \error, reason: 'Failed to repost item.' }
+      
+      client = ConnectionManager.get-connection serv, slot-name
+
+      if item.favorited
+        client.handle-undo-repost item.id, after-undo-favorite, err
+      else
+        client.handle-repost item.id, after-favorite, err
+
+    delete-item: (serv, slot-name, item, respond) !->
+      after-delete = !->
+        respond { result: \ok}
+
+      err = !->
+      
+      client = ConnectionManager.get-connection serv, slot-name
+      client.handle-delete item.id, after-delete, err
+
+    # preview-media: (a-media) !->
+    #   opts = {}
+    #   DialogService.open-preview-dialog opts, a-media
+
+    drop: (content, respond) !~>
+      after-messager-result = !->
+
+      err = !->
+        Logger.info 'Failed to post message, save as draft'
+
+    update-profile: (content, respond) !~>
+      after-update-profile = (a-profile) !->
+        account = content.account
+        SliderService.update-slot-profile account.serv, account.name, a-profile
+        respond { result: \ok, profile: a-profile }
+
+      err = !->
+        Logger.info 'Failed to update profile'
+
+      if content.account
+        account = content.account
+
+        connection = ConnectionManager.get-connection account.serv, account.name
+        if connection
+          connection.handle-update-profile content.profile, after-update-profile, err
+        else
+          Logger.info 'connection is not available'
+
+    update-avatar: (content, respond) !->
+      after-update-avatar = (a-profile) !->
+        account = content.account
+        # WARKAROUND: twitter responds the profile with old avatar url
+        connection.verify( (updated-profile) !->
+          SliderService.update-slot-avatar account.serv, account.name, updated-profile.avatar-url
+          SliderService.update-slot-profile account.serv, account.name updated-profile
+          respond { result: \ok, profile: updated-profile }
+        , !->
+          respond { result: \ok, profile: a-profile }
+        )
+
+      err = !->
+        Logger.info 'Failed to update profile'
+
+      if content.account
+        acount = content.account
+
+        connection = ConnectionService.get-connection account.serv, account.name
+        if connection
+          content.avatar.data = Hotcake.data-URL2-uint8-array content.avatar.base64-data
+          connection.handle-update-avatar content.avatar, after-update-avatar, err
+        else
+          Logger.info 'connection is not available'
+
+    share-media: (a-media, respond) !->
+      DialogService.open-compose-dialog SliderService.current-slot, {}, a-media
+
+    get-OAuth-authorize-URL: (serv, user-name, respond) !->
+      proto = ConnectionManager.get-proto serv
+      connection = ConnectionManager.create-connection serv, user-name
+
+      if connection
+        url = connection.get-authorize-URL()
+
+        if url
+          respond { result: \ok, content: { url: url } }
+        else
+          respond { result: \error, reason: 'Failed to get Authrorize URL..' }
+      else
+        respond { result: \error, reason: 'Failed to create connection.' }
+
+    auth-pass-proc: (serv, user-name, password, a-proto, a-connection) !->
+      settings = {}
+
+      angular.extend settings, a-proto.get-settings()
+
+      slot = HotcakeSlot.build-defaults serv, user-name
+      slot.auth-type = connection.auth-type
+      slot.password = if connection.auth-type is \oauth then '' else password
+      slot.access-token = connection.access-token
+      slot.key = connection.key
+      slot.secret = connection.secret
+      slot.columns = []
+      slot.settings = settings
+      SliderService.add-slot slot
+
+    authorize-with-pin: (serv, user-name, password, pin, respond) !->
+      check-connection = (a-proto, a-connection) !->
+        if HotcakeBus.stop-auth
+          respond { result: \canceled, reason: '' }
+          HotcakeBus.stop-auth = false
+          return
+
+        console.log 'check connection'
+
+        set-timeout(
+          !->
+            switch a-connection.state
+              when 0
+                check-connection a-proto, a-connection
+              when 1
+                HotcakeSlot.exists serv, user-name, (result) !->
+                  if result
+                    respond { result: \error, reason: 'Account already exists.' }
+                  else
+                    HotcakeBus.auth-pass-proc serv, user-name, password, a-proto, a-connection
+                    respond { result: \ok }
+              default
+                respond { result: \error, reason: "Failed to add acount, reson: #{a-connection.err}" }
+        , 3000
+        )
+
+      HotcakeSlot.exists serv, user-name, (result) !->
+        if result
+          respond { result: \error, reason: 'Account already exists.' }
+        else
+          a-proto      = ConnectionManager.get-proto serv
+          a-connection = ConnectionManager.create-connection serv, user-name
+          if a-connection
+            a-connection.authorize-pin pin
+            check-connection a-proto, a-connection
+          else
+            respond { result: \error, reason: 'Failed to create connection.' }
+
+    authorize: (serv, user-name, password, respond) !->
+      check-connection = (a-proto, a-connection) !->
+        if HotcakeBus.stop-auth
+          respond { result: \canceled, reason: '' }
+          HotcakeBus.stop-auth = false
+          return
+
+        console.log 'check connection'
+
+        set-timeout(
+          !->
+            switch a-connection.state
+              when 0
+                check-connection a-proto, a-connection
+              when 1
+                HotcakeSlot.exists serv, user-name, (result) !->
+                  if result
+                    respond { result: \error, reason: 'Account already exists.' }
+                  else
+                    HotcakeBus.auth-pass-proc serv, user-name, password, a-proto, a-connection
+                    respond { result: \ok }
+              default
+                respond { result: \error, reason: "Failed to add acount, reson: #{a-connection.err}" }
+        , 3000
+        )
+
+      HotcakeSlot.exists serv, user-name, (result) !->
+        if result
+          respond { result: \error, reason: 'Account already exists.' }
+        else
+          a-proto      = ConnectionManager.get-proto serv
+          a-connection = ConnectionManager.create-connection serv, user-name
+          if a-connection
+            a-connection.authorize user-name, password
+            check-connection a-proto, a-connection
+          else
+            respond { result: \error, reason: 'Failed to create connection.' }
 
   HotcakeBus
 ] )
